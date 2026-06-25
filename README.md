@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Simulateur Crypto — S'investir
 
-## Getting Started
+Transposition du simulateur crypto de [sinvestir.fr](https://sinvestir.fr/simulateur-crypto-monnaie/) aux standards visuels de [simulateurs.sinvestir.fr](https://simulateurs.sinvestir.fr/).
 
-First, run the development server:
+## Stack
+
+| Technologie | Justification |
+|---|---|
+| **Next.js 16** (App Router) | Stack interne S'investir |
+| **TypeScript** | Typage strict, robustesse |
+| **Tailwind CSS v4** | Design system, responsive |
+| **Supabase** | Stockage données crypto, compatible stack interne |
+| **Vercel** | Déploiement natif Next.js |
+
+### Pourquoi Supabase plutôt qu'un appel API direct ?
+
+Le plan gratuit CoinGecko limite l'historique à 365 jours. Pour offrir un historique illimité, un script seed alimente Supabase via **Binance API** (gratuit, données historiques complètes depuis 2017). Fallback automatique sur CoinGecko si une crypto n'est pas encore seedée.
+
+## Fonctionnalités
+
+- DCA (Dollar Cost Averaging) avec 4 fréquences
+- 200+ cryptos (liste dynamique depuis CoinGecko)
+- Graphique SVG pur (zéro dépendance) : courbe investi vs performance
+- Résultats : total investi, valeur finale, gain/perte, performance %
+- Gestion intelligente des limites CoinGecko (365 jours)
+- Responsive desktop/mobile
+- Thème dark identité S'investir
+
+## Prérequis
+
+- Node.js 20+
+- Un compte Supabase (gratuit)
+- Une clé API CoinGecko (gratuite)
+
+## Installation
+
+```bash
+npm install
+```
+
+### Variables d'environnement
+
+Créez un fichier `.env.local` :
+
+```env
+NEXT_PUBLIC_COINGECKO_API_KEY=votre_clé_ici
+NEXT_PUBLIC_SUPABASE_URL=https://votre-projet.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=votre_clé_anon_ici
+SUPABASE_URL=https://votre-projet.supabase.co
+SUPABASE_SERVICE_KEY=votre_clé_service_ici
+```
+
+### Base de données (Supabase)
+
+Exécutez ce SQL dans **Supabase → SQL Editor** :
+
+```sql
+CREATE TABLE IF NOT EXISTS crypto_list (
+  id TEXT PRIMARY KEY,
+  nom TEXT NOT NULL,
+  symbole TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS crypto_prices (
+  id BIGSERIAL PRIMARY KEY,
+  crypto_id TEXT NOT NULL REFERENCES crypto_list(id),
+  timestamp BIGINT NOT NULL,
+  prix FLOAT8 NOT NULL,
+  UNIQUE(crypto_id, timestamp)
+);
+
+ALTER TABLE crypto_prices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crypto_list ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Tout le monde peut lire crypto_list"
+  ON crypto_list FOR SELECT USING (true);
+
+CREATE POLICY "Tout le monde peut lire crypto_prices"
+  ON crypto_prices FOR SELECT USING (true);
+```
+
+### Seed initial (remplir Supabase)
+
+```bash
+npm run seed
+```
+
+Récupère l'historique des 200 plus grosses cryptos : Binance (complet) + CoinGecko (365 jours) si absente de Binance.
+
+## Développement
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Mise à jour automatique des données
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Déployez et configurez un cron (cron-job.org, UptimeRobot) pour pinger quotidiennement :
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+https://votre-site.vercel.app/api/seed
+```
 
-## Learn More
+Le seed est idempotent (upsert) → pas de doublons.
 
-To learn more about Next.js, take a look at the following resources:
+## Architecture
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/
+│   ├── api/seed/route.ts    # Route cron pour seed automatique
+│   ├── globals.css           # Design system (@theme inline)
+│   ├── layout.tsx            # Layout racine (header, footer, police Lexend)
+│   └── page.tsx              # Page d'accueil
+├── components/
+│   ├── cryptoCalculs.ts      # Appels API + calculs DCA
+│   ├── CryptoChart.tsx       # Graphique SVG pur
+│   ├── CryptoForm.tsx        # Formulaire
+│   ├── CryptoResultats.tsx   # Affichage résultats
+│   └── CryptoSimulator.tsx   # Chef d'orchestre
+└── lib/
+    └── supabase.ts           # Client Supabase
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Partis pris techniques
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **SVG pur** pour le graphique : zéro dépendance, léger, intégrable sans conflit
+- **Binance > CoinCap** : CoinCap était inaccessible depuis notre réseau, Binance API est fiable et gratuite
+- **Cache à la volée** : les données CoinGecko sont stockées dans Supabase à chaque simulation → accumulation progressive
+- **Pas de librairie UI** : Tailwind seul, pour rester cohérent avec simulateurs.sinvestir.fr
