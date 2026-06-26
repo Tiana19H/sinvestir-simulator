@@ -37,8 +37,13 @@ async function seedList() {
     "https://api.coingecko.com/api/v3/coins/markets?vs_currency=eur&order=market_cap_desc&per_page=200&page=1",
     { headers: { "x-cg-demo-api-key": cgKey } }
   );
-  if (!res.ok) throw new Error(`CoinGecko list error: ${res.status}`);
-  const data = await res.json();
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`CoinGecko list error ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const text = await res.text();
+  if (!text) throw new Error("CoinGecko list: empty response");
+  const data = JSON.parse(text);
 
   const cryptos = data.map((c) => ({
     id: c.id,
@@ -46,13 +51,16 @@ async function seedList() {
     symbole: c.symbol.toUpperCase(),
   }));
 
-  const { error } = await supabaseFetch("/rest/v1/crypto_list", {
+  const supRes = await supabaseFetch("/rest/v1/crypto_list", {
     method: "POST",
     body: JSON.stringify(cryptos),
     headers: { Prefer: "resolution=merge-duplicates" },
-  }).then((r) => r.json());
-
-  if (error) throw error;
+  });
+  const resultText = await supRes.text();
+  if (resultText) {
+    const { error } = JSON.parse(resultText);
+    if (error) throw error;
+  }
   console.log(`✓ ${cryptos.length} cryptos insérées/mises à jour`);
   return cryptos;
 }
@@ -63,7 +71,9 @@ async function fetchCoinGeckoPrices(cryptoId) {
   const url = `https://api.coingecko.com/api/v3/coins/${cryptoId}/market_chart/range?vs_currency=eur&from=${debut / 1000}&to=${fin / 1000}`;
   const res = await fetch(url, { headers: { "x-cg-demo-api-key": cgKey } });
   if (!res.ok) return null;
-  const data = await res.json();
+  const text = await res.text();
+  if (!text) return null;
+  const data = JSON.parse(text);
   if (!data?.prices?.length) return null;
   return data.prices.map((p) => ({ crypto_id: cryptoId, timestamp: p[0], prix: p[1] }));
 }
