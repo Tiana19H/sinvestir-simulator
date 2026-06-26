@@ -1,10 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import { WebSocket } from "ws";
-
-if (!globalThis.WebSocket) {
-  globalThis.WebSocket = WebSocket;
-}
 
 dotenv.config({ path: ".env.local" });
 
@@ -16,8 +10,25 @@ if (!supabaseUrl || !supabaseKey) {
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
 const BINANCE_BASE = "https://api.binance.com";
+
+async function supabaseFetch(path, options = {}) {
+  const url = `${supabaseUrl}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      ...options.headers,
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Supabase ${res.status}: ${body}`);
+  }
+  return res;
+}
 
 async function getBinanceSymbols() {
   const res = await fetch(`${BINANCE_BASE}/api/v3/exchangeInfo`);
@@ -51,9 +62,11 @@ async function seedList() {
     symbole: c.symbol.toUpperCase(),
   }));
 
-  const { error } = await supabase
-    .from("crypto_list")
-    .upsert(cryptos, { onConflict: "id" });
+  const { error } = await supabaseFetch("/rest/v1/crypto_list", {
+    method: "POST",
+    body: JSON.stringify(cryptos),
+    headers: { Prefer: "resolution=merge-duplicates" },
+  }).then((r) => r.json());
 
   if (error) throw error;
   console.log(`✓ ${cryptos.length} cryptos insérées/mises à jour`);
@@ -91,10 +104,11 @@ async function fetchCoinGeckoPrices(cryptoId) {
 async function storeRows(rows, chunkSize) {
   for (let j = 0; j < rows.length; j += chunkSize) {
     const chunk = rows.slice(j, j + chunkSize);
-    const { error } = await supabase
-      .from("crypto_prices")
-      .upsert(chunk, { onConflict: "crypto_id,timestamp" });
-    if (error) return error;
+    await supabaseFetch("/rest/v1/crypto_prices", {
+      method: "POST",
+      body: JSON.stringify(chunk),
+      headers: { Prefer: "resolution=merge-duplicates" },
+    });
   }
   return null;
 }
