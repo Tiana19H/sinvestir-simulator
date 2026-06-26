@@ -51,7 +51,7 @@ async function seedList() {
     symbole: c.symbol.toUpperCase(),
   }));
 
-  const supRes = await supabaseFetch("/rest/v1/crypto_list", {
+  const supRes = await supabaseFetch("/rest/v1/crypto_list?on_conflict=id", {
     method: "POST",
     body: JSON.stringify(cryptos),
     headers: { Prefer: "resolution=merge-duplicates" },
@@ -93,11 +93,14 @@ async function seedPrices(cryptos) {
       }
 
       for (let j = 0; j < rows.length; j += CHUNK_SIZE) {
-        await supabaseFetch("/rest/v1/crypto_prices", {
-          method: "POST",
-          body: JSON.stringify(rows.slice(j, j + CHUNK_SIZE)),
-          headers: { Prefer: "resolution=merge-duplicates" },
-        });
+        await supabaseFetch(
+          "/rest/v1/crypto_prices?on_conflict=crypto_id,timestamp",
+          {
+            method: "POST",
+            body: JSON.stringify(rows.slice(j, j + CHUNK_SIZE)),
+            headers: { Prefer: "resolution=merge-duplicates" },
+          }
+        );
       }
 
       console.log(`  ✓ ${rows.length} jours`);
