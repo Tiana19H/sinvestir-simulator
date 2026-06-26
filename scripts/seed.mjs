@@ -1,6 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import ws from "ws";
+import { WebSocket } from "ws";
+
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = WebSocket;
+}
 
 dotenv.config({ path: ".env.local" });
 
@@ -12,9 +16,7 @@ if (!supabaseUrl || !supabaseKey) {
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey, {
-  realtime: { transport: ws },
-});
+const supabase = createClient(supabaseUrl, supabaseKey);
 const BINANCE_BASE = "https://api.binance.com";
 
 async function getBinanceSymbols() {
